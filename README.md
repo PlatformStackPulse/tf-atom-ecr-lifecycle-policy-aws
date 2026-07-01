@@ -3,9 +3,45 @@
 [![CI](https://github.com/PlatformStackPulse/tf-atom-ecr-lifecycle-policy-aws/actions/workflows/ci.yml/badge.svg)](https://github.com/PlatformStackPulse/tf-atom-ecr-lifecycle-policy-aws/actions/workflows/ci.yml)
 ![Terraform](https://img.shields.io/badge/terraform-%3E%3D1.6.0-blueviolet)
 
-## Purpose
+Terraform atom that attaches a lifecycle policy to an existing AWS ECR repository, automating image retention (expire untagged images, cap the number of tagged images, etc.).
 
-Terraform atom: AWS ECR Lifecycle Policy - manages image retention rules.
+## Features
+
+- Attaches an `aws_ecr_lifecycle_policy` to an existing ECR repository by name.
+- Accepts any valid ECR lifecycle policy JSON document (`policy` input).
+- Fully `enabled`/`context`-aware via [tf-label](https://github.com/PlatformStackPulse/tf-label): set `enabled = false` to create no resources.
+- Exposes `repository`, `registry_id`, and `enabled` outputs for composition.
+- Input validation guards against empty `repository_name` / `policy`.
+
+## Usage
+
+```hcl
+module "ecr_lifecycle_policy" {
+  source = "git::https://github.com/PlatformStackPulse/tf-atom-ecr-lifecycle-policy-aws.git?ref=v1.0.0"
+
+  namespace = "eg"
+  stage     = "prod"
+  name      = "app"
+
+  repository_name = "eg-prod-app"
+
+  policy = jsonencode({
+    rules = [
+      {
+        rulePriority = 1
+        description  = "Expire untagged images older than 14 days"
+        selection = {
+          tagStatus   = "untagged"
+          countType   = "sinceImagePushed"
+          countUnit   = "days"
+          countNumber = 14
+        }
+        action = { type = "expire" }
+      }
+    ]
+  })
+}
+```
 
 ## Module Documentation
 
@@ -67,3 +103,16 @@ Terraform atom: AWS ECR Lifecycle Policy - manages image retention rules.
 | <a name="output_registry_id"></a> [registry\_id](#output\_registry\_id) | Registry ID |
 | <a name="output_repository"></a> [repository](#output\_repository) | Repository name the policy is attached to |
 <!-- END_TF_DOCS -->
+
+## Tests
+
+Unit tests use the native `terraform test` framework with a mock AWS provider (no real AWS calls, no credentials required). They assert on plan-known values only — the tf-label `id`, resource counts, the `enabled` flag, and null outputs when disabled.
+
+```bash
+# Unit tests (mock provider)
+terraform init -backend=false
+terraform test -test-directory=tests/unit
+
+# Or via the Makefile
+make test-unit
+```
